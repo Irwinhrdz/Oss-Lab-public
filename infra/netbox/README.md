@@ -1,9 +1,9 @@
-# NetBox — inventario de sitios (OSS)
+# NetBox — site inventory (OSS)
 
-Guarda sitios, torres, equipos e IPs. Aquí se registra el gNB simulado como si fuera un sitio real
-(por ejemplo, un SKB de St. Kitts). Detalle completo: Paso 3 del lab.
+Stores sites, towers, equipment and IPs. This is where the simulated gNB is registered as if it were
+a real site (e.g., an SKB in St. Kitts). Full detail: Lab step 3.
 
-## Instalación
+## Installation
 
 ```bash
 git clone -b release https://github.com/netbox-community/netbox-docker.git
@@ -13,45 +13,46 @@ docker compose pull && docker compose up -d
 docker compose exec netbox /opt/netbox/netbox/manage.py createsuperuser
 ```
 
-`docker-compose.override.yml` publica el puerto 8000 en vez del 8080 interno, y **solo en
-`127.0.0.1`** de la VM — mismo criterio de seguridad que la WebUI de Open5GS (ver
-[`docker-compose.override.yml`](./docker-compose.override.yml)). Para entrar desde tu Mac, abre un
-túnel SSH y déjalo corriendo:
+`docker-compose.override.yml` publishes port 8000 instead of the internal 8080, and **only on
+`127.0.0.1`** of the VM — same security approach as the Open5GS WebUI (see
+[`docker-compose.override.yml`](./docker-compose.override.yml)). To reach it from your Mac, open an
+SSH tunnel and leave it running:
 
 ```bash
 ssh -i ~/.ssh/oss-lab-vm.key -L 8000:localhost:8000 ubuntu@<ip>
 ```
 
-## Configuración inicial
+## Initial configuration
 
-Primero crea el superusuario (la imagen no trae uno por defecto):
+First create the superuser (the image doesn't ship with one by default):
 
 ```bash
 docker compose exec netbox /opt/netbox/netbox/manage.py createsuperuser
 ```
 
-Con el túnel abierto, `http://localhost:8000` ya deja administrar todo a mano (Region, Site, Manufacturer,
-Device Type, Device, API Tokens). Para no repetirlo a mano cada vez, [`seed.py`](./seed.py) crea el Site del
-gNB simulado (slug `skb837`, status `active` — el middleware rechaza cualquier otro estado), su Device, y
-un API Token:
+With the tunnel open, `http://localhost:8000` already lets you administer everything by hand (Region,
+Site, Manufacturer, Device Type, Device, API Tokens). To avoid repeating that by hand every time,
+[`seed.py`](./seed.py) creates the Site for the simulated gNB (slug `skb837`, status `active` — the
+middleware rejects any other status), its Device, and an API Token:
 
 ```bash
 docker compose cp seed.py netbox:/tmp/seed.py
 docker compose exec netbox /opt/netbox/netbox/manage.py shell -c "exec(open('/tmp/seed.py').read())"
 ```
 
-Imprime `NETBOX_API_TOKEN=...` al final — ese es el valor para `middleware/.env`.
+It prints `NETBOX_API_TOKEN=...` at the end — that's the value for `middleware/.env`.
 
-### Importante: NetBox 4.7 cambió el formato de los tokens
+### Important: NetBox 4.7 changed the token format
 
-Por defecto, un token nuevo (creado desde la UI o la API) es **v2**: usa el header
-`Authorization: Bearer nbt_<key>.<secreto>`, no `Authorization: Token <valor>`. El middleware de este repo
-está escrito para el esquema clásico (`Token`), así que **hay que crear tokens v1 explícitamente**
-(`seed.py` ya lo hace con `version=TokenVersionChoices.V1`). Si se crea un token desde la UI sin fijarse en
-esto, la llamada del middleware falla con `"Invalid v1 token"` aunque el token exista y esté activo.
+By default, a new token (created from the UI or the API) is **v2**: it uses the header
+`Authorization: Bearer nbt_<key>.<secret>`, not `Authorization: Token <value>`. This repo's middleware
+is written for the classic scheme (`Token`), so **v1 tokens must be created explicitly**
+(`seed.py` already does this with `version=TokenVersionChoices.V1`). If a token is created from the UI
+without paying attention to this, the middleware's call fails with `"Invalid v1 token"` even though the
+token exists and is active.
 
-## Contrato con el middleware
+## Contract with the middleware
 
-El middleware llama `GET /api/dcim/sites/?slug=<sitio>` con header `Authorization: Token <NETBOX_API_TOKEN>`
-y exige `results[0].status.value === "active"`. El campo `sitio` del `POST /subscribers` es el **slug** del Site,
-no su nombre visible.
+The middleware calls `GET /api/dcim/sites/?slug=<sitio>` with the header
+`Authorization: Token <NETBOX_API_TOKEN>` and requires `results[0].status.value === "active"`. The
+`sitio` field in `POST /subscribers` is the Site's **slug**, not its display name.

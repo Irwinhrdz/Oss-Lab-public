@@ -1,14 +1,14 @@
-# Middleware de aprovisionamiento (OSS Lab)
+# Provisioning middleware (OSS Lab)
 
-Servicio NestJS que convierte un alta en un suscriptor activo en el core Open5GS, validando antes el
-sitio de cobertura en NetBox. Ver el repo completo en [`../README.md`](../README.md).
+NestJS service that turns a sign-up into an active subscriber in the Open5GS core, first validating
+the coverage site in NetBox. See the full repo at [`../README.md`](../README.md).
 
 ## Endpoints
 
-| Método | Ruta | Descripción |
+| Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `/subscribers` | Valida el sitio en NetBox, genera IMSI/K/OPc y los inserta en Mongo |
-| `GET` | `/health` | Usado por Zabbix como HTTP agent item |
+| `POST` | `/subscribers` | Validates the site in NetBox, generates IMSI/K/OPc and inserts them into Mongo |
+| `GET` | `/health` | Used by Zabbix as an HTTP agent item |
 
 ### `POST /subscribers`
 
@@ -20,50 +20,50 @@ sitio de cobertura en NetBox. Ver el repo completo en [`../README.md`](../README
 { "imsi": "999700000000099", "k": "...", "opc": "...", "cliente": "Juan Perez", "plan": "10GB", "sitio": "skb837" }
 ```
 
-`sitio` es el **slug** del Site en NetBox, y debe estar en estado `active`.
+`sitio` is the Site's **slug** in NetBox, and it must be in `active` status.
 
-## Variables de entorno
+## Environment variables
 
-Ver [`.env.example`](./.env.example). Validadas al boot con Joi (`src/config/validation.ts`) — el
-servicio no arranca si falta alguna.
+See [`.env.example`](./.env.example). Validated at boot with Joi (`src/config/validation.ts`) — the
+service refuses to start if any are missing.
 
-| Variable | Descripción |
+| Variable | Description |
 | --- | --- |
-| `PORT` | Puerto HTTP (default `3000`) |
-| `NETBOX_URL` | Base URL de NetBox |
-| `NETBOX_API_TOKEN` | Token de API de NetBox |
-| `OPEN5GS_MONGO_URI` | URI del MongoDB remoto de Open5GS |
-| `TEMPLATE_IMSI` | IMSI del suscriptor plantilla a copiar |
-| `IMSI_PREFIX` | Prefijo de los IMSI generados (default `99970`) |
+| `PORT` | HTTP port (default `3000`) |
+| `NETBOX_URL` | NetBox base URL |
+| `NETBOX_API_TOKEN` | NetBox API token |
+| `OPEN5GS_MONGO_URI` | URI of Open5GS's remote MongoDB |
+| `TEMPLATE_IMSI` | IMSI of the template subscriber to copy |
+| `IMSI_PREFIX` | Prefix for generated IMSIs (default `99970`) |
 
-## Estructura
+## Structure
 
 ```
 src/
-├── config/        # Carga y validación (Joi) de variables de entorno
+├── config/        # Loading and validation (Joi) of environment variables
 ├── health/        # GET /health
-├── netbox/        # Cliente HTTP de NetBox (valida sitio activo)
-├── open5gs/        # Conexión a Mongo, generación de IMSI y copia de plantilla
-└── subscribers/    # Orquesta netbox + open5gs; expone POST /subscribers
+├── netbox/        # NetBox HTTP client (validates the site is active)
+├── open5gs/        # Mongo connection, IMSI generation, and template copy
+└── subscribers/    # Orchestrates netbox + open5gs; exposes POST /subscribers
 ```
 
-## Desarrollo
+## Development
 
 ```bash
 npm install
-cp .env.example .env   # completa con valores reales de tu VM
+cp .env.example .env   # fill in with real values from your VM
 npm run start:dev
 ```
 
 ## Tests
 
 ```bash
-npm test          # unitarios (vitest)
+npm test          # unit tests (vitest)
 npm run test:e2e   # end-to-end
 npm run lint        # oxlint
 ```
 
-## Build y Docker
+## Build and Docker
 
 ```bash
 npm run build

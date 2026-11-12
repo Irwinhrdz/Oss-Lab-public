@@ -1,97 +1,97 @@
-# OSS Lab — core 5G, inventario y monitoreo
+# OSS Lab — 5G core, inventory and monitoring
 
-Lab de **OSS y red** (sin BSS): un middleware propio convierte un alta en un suscriptor activo en el
-core 5G, validando el sitio de cobertura en el inventario y quedando vigilado por el NOC.
+**OSS and network** lab (no BSS): a custom middleware turns a sign-up into an active subscriber in the
+5G core, validating the coverage site in the inventory and getting watched over by the NOC.
 
-> Esta carpeta es la **versión pública** del lab: mismo código y misma arquitectura, sin datos de
-> ninguna instancia concreta (IPs, llaves SSH, contraseñas de paneles). Ver
-> [`docs/ESTADO-DEMO.md`](docs/ESTADO-DEMO.md) para qué está probado de verdad y qué queda fuera a
-> propósito.
+> This folder is the **public version** of the lab: same code and same architecture, with no data from
+> any concrete instance (IPs, SSH keys, panel passwords). See
+> [`docs/ESTADO-DEMO.md`](docs/ESTADO-DEMO.md) for what's actually tested and what's deliberately left out.
 
-## Arquitectura y flujo de datos
+## Architecture and data flow
 
-![Arquitectura del OSS Lab: alta de suscriptor, flujo de datos del core 5G y vigilancia de Zabbix](docs/architecture.svg)
+![OSS Lab architecture: subscriber sign-up, 5G core data flow, and Zabbix monitoring](docs/architecture.svg)
 
 ```
-POST /subscribers ──▶ middleware (NestJS) ──▶ valida sitio ──▶ NetBox (inventario)
+POST /subscribers ──▶ middleware (NestJS) ──▶ validates site ──▶ NetBox (inventory)
                                    │
-                                   └────────▶ genera IMSI/K/OPc ──▶ MongoDB de Open5GS (core 5G)
+                                   └────────▶ generates IMSI/K/OPc ──▶ Open5GS MongoDB (5G core)
 
-Zabbix ──▶ vigila procesos del core/gNB y GET /health del middleware
+Zabbix ──▶ watches core/gNB processes and GET /health on the middleware
 ```
 
-Ver el detalle de qué hace cada sistema y cómo se relacionan en [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md).
+See what each system does and how they relate in [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md).
 
-Lo único que se programa es el **middleware** (`middleware/`); el resto es software open source que
-solo se instala y configura (`infra/`).
+The only part that's custom-built is the **middleware** (`middleware/`); everything else is open
+source software that's only installed and configured (`infra/`).
 
-## Estructura de este repo
+## Repo structure
 
 ```
 oss-lab/
-├── middleware/     # Servicio NestJS de aprovisionamiento (lo único "a medida")
-├── infra/          # Infraestructura como código: bootstrap de la VM, NetBox, Zabbix, Open5GS/UERANSIM
-├── scripts/        # Scripts operativos (deploy del middleware a una instancia remota)
-└── docs/           # Arquitectura, diagrama y estado de la demo
+├── middleware/     # NestJS provisioning service (the only "custom" piece)
+├── infra/          # Infrastructure as code: VM bootstrap, NetBox, Zabbix, Open5GS/UERANSIM
+├── scripts/        # Operational scripts (deploying the middleware to a remote instance)
+└── docs/           # Architecture, diagram, and demo status
 ```
 
-## Software usado
+## Software used
 
-| Software | Rol | Repositorio |
+| Software | Role | Repository |
 | --- | --- | --- |
-| Open5GS | Core 4G/5G | [open5gs/open5gs](https://github.com/open5gs/open5gs) |
-| UERANSIM | gNB y UE simulados | [aligungr/UERANSIM](https://github.com/aligungr/UERANSIM) |
-| NetBox | Inventario de sitios | [netbox-community/netbox-docker](https://github.com/netbox-community/netbox-docker) |
-| Zabbix | Alarmas y KPIs | [zabbix/zabbix-docker](https://github.com/zabbix/zabbix-docker) |
+| Open5GS | 4G/5G core | [open5gs/open5gs](https://github.com/open5gs/open5gs) |
+| UERANSIM | Simulated gNB and UE | [aligungr/UERANSIM](https://github.com/aligungr/UERANSIM) |
+| NetBox | Site inventory | [netbox-community/netbox-docker](https://github.com/netbox-community/netbox-docker) |
+| Zabbix | Alarms and KPIs | [zabbix/zabbix-docker](https://github.com/zabbix/zabbix-docker) |
 
 ## Quickstart
 
-### 1. Preparar una VM propia
+### 1. Set up your own VM
 
 ```bash
-scp -i <tu-llave> infra/bootstrap/bootstrap-vm.sh ubuntu@<ip>:~
-ssh -i <tu-llave> ubuntu@<ip> "bash bootstrap-vm.sh"
+scp -i <your-key> infra/bootstrap/bootstrap-vm.sh ubuntu@<ip>:~
+ssh -i <your-key> ubuntu@<ip> "bash bootstrap-vm.sh"
 ```
 
-Luego sigue, en orden: [`infra/open5gs/README.md`](./infra/open5gs/README.md),
+Then follow, in order: [`infra/open5gs/README.md`](./infra/open5gs/README.md),
 [`infra/ueransim/README.md`](./infra/ueransim/README.md), [`infra/netbox/README.md`](./infra/netbox/README.md),
 [`infra/zabbix/README.md`](./infra/zabbix/README.md).
 
-### 2. Desarrollar el middleware en local
+### 2. Develop the middleware locally
 
 ```bash
 cd middleware
-cp .env.example .env   # completa NETBOX_URL/TOKEN y OPEN5GS_MONGO_URI reales
+cp .env.example .env   # fill in real NETBOX_URL/TOKEN and OPEN5GS_MONGO_URI
 npm install --legacy-peer-deps
 npm run start:dev
 ```
 
-### 3. Desplegarlo a tu instancia
+### 3. Deploy it to your instance
 
 ```bash
-SSH_KEY=~/.ssh/tu-llave.key REMOTE=ubuntu@<ip-de-tu-vm> ./scripts/deploy-middleware.sh
+SSH_KEY=~/.ssh/your-key.key REMOTE=ubuntu@<your-vm-ip> ./scripts/deploy-middleware.sh
 ```
 
-El script sincroniza `middleware/` por rsync y levanta el contenedor con `docker compose`. El `.env` del
-servidor **no se toca** desde el script: se crea una vez a mano en el servidor con los secretos reales.
+The script syncs `middleware/` via rsync and brings up the container with `docker compose`. The
+server's `.env` is **never touched** by the script — it's created once by hand on the server with the
+real secrets.
 
-## Seguridad
+## Security
 
-- Los puertos de administración (9999, 8000, 8080, 27017) solo deben abrirse a IPs específicas, nunca a
-  `0.0.0.0/0` — son paneles con usuario por defecto.
-- K/OPc nunca se escriben en logs (`middleware/src/subscribers/subscribers.service.ts`).
-- Ningún `.env`, llave SSH ni credencial real se incluye en este repo — solo `*.example.*` con
+- Admin ports (9999, 8000, 8080, 27017) should only be opened to specific IPs, never to
+  `0.0.0.0/0` — these are panels with default credentials.
+- K/OPc are never written to logs (`middleware/src/subscribers/subscribers.service.ts`).
+- No `.env`, SSH key, or real credential is included in this repo — only `*.example.*` files with
   placeholders.
 
-## Roadmap (fuera de este repo por ahora)
+## Roadmap (out of scope for this repo for now)
 
-- Exponer el alta con la API **TMF640** (TM Forum Open APIs) sobre el mismo endpoint.
-- Fase 2 (BSS: Kill Bill u Odoo) llamaría a este mismo `POST /subscribers` — se trataría como un
-  **proyecto separado**; este repo se mantiene solo-OSS.
-- Fase 2 (opcional, dentro de OSS): **multi-tenencia de NFs**. Hoy `/topology` asume un solo Open5GS
-  core (un AMF/SMF/UPF fijo) y un solo gNB simulado — los sitios de NetBox son solo inventario, no se
-  relacionan con ningún NF ni cliente.
+- Expose the sign-up through the **TMF640** API (TM Forum Open APIs) on the same endpoint.
+- Phase 2 (BSS: Kill Bill or Odoo) would call this same `POST /subscribers` — it would be treated as a
+  **separate project**; this repo stays OSS-only.
+- Phase 2 (optional, within OSS): **NF multi-tenancy**. Today `/topology` assumes a single Open5GS
+  core (one fixed AMF/SMF/UPF) and a single simulated gNB — NetBox sites are inventory only, not tied
+  to any NF or customer.
 
-## Licencia
+## License
 
-MIT — ver [`LICENSE`](LICENSE).
+MIT — see [`LICENSE`](LICENSE).

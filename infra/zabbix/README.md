@@ -1,12 +1,13 @@
-# Zabbix — alarmas y KPIs (OSS)
+# Zabbix — alarms and KPIs (OSS)
 
-Hace de NOC: vigila que los procesos del core y el gNB estén vivos, y vigila `/health` del middleware.
+Acts as the NOC: watches that the core and gNB processes are alive, and watches the middleware's
+`/health`.
 
-## Instalación (Docker: server + web + PostgreSQL)
+## Installation (Docker: server + web + PostgreSQL)
 
-El repo `zabbix-docker` dejó de usar archivos `docker-compose_v3_*.yaml` sueltos — ahora es
-`compose.yaml`/`compose_pgsql.yaml` (con `extends` hacia `compose_zabbix_components.yaml`) + un
-`Makefile` que pasa las variables necesarias. La vía soportada es `make`:
+The `zabbix-docker` repo dropped the standalone `docker-compose_v3_*.yaml` files — it's now
+`compose.yaml`/`compose_pgsql.yaml` (`extends`-ing `compose_zabbix_components.yaml`) plus a
+`Makefile` that passes the required variables. The supported path is `make`:
 
 ```bash
 git clone https://github.com/zabbix/zabbix-docker.git
@@ -14,34 +15,35 @@ cd zabbix-docker
 make up DB=pgsql OS=alpine
 ```
 
-Esto trae `postgres-server`, `server-db-init`, `zabbix-server` y `zabbix-web-nginx-pgsql`. Publica el
-puerto 8080 (HTTP) y 443 (HTTPS) en **`0.0.0.0`** — a diferencia de NetBox, aquí **no** se puede limitar a
-`127.0.0.1` con un override de compose: la definición de puertos del proyecto usa `extends` desde otro
-archivo, y un override con `host_ip` no la reemplaza, la **duplica** (Docker intenta bindear
-`0.0.0.0:8080` y `127.0.0.1:8080` a la vez y falla con `address already in use`).
+This brings up `postgres-server`, `server-db-init`, `zabbix-server` and `zabbix-web-nginx-pgsql`. It
+publishes port 8080 (HTTP) and 443 (HTTPS) on **`0.0.0.0`** — unlike NetBox, here it's **not**
+possible to restrict to `127.0.0.1` with a compose override: the project's port definition uses
+`extends` from another file, and an override with `host_ip` doesn't replace it, it **duplicates** it
+(Docker tries to bind `0.0.0.0:8080` and `127.0.0.1:8080` at the same time and fails with
+`address already in use`).
 
-En su lugar, [`firewall-fixup.sh`](./firewall-fixup.sh) bloquea con `iptables`/`ip6tables` cualquier
-conexión a los puertos 8080/443 que no venga de `127.0.0.1`/`::1` — mismo resultado de seguridad
-(solo accesible por túnel SSH), sin pelear con el merge de compose. Correrlo después de cada
-`make up` y después de cada reinicio de la VM (son reglas en caliente, no persisten):
+Instead, [`firewall-fixup.sh`](./firewall-fixup.sh) uses `iptables`/`ip6tables` to block any
+connection to ports 8080/443 that doesn't come from `127.0.0.1`/`::1` — same security outcome
+(only reachable via SSH tunnel), without fighting the compose merge. Run it after every
+`make up` and after every VM reboot (these are live rules, they don't persist):
 
 ```bash
 sudo bash firewall-fixup.sh
 ```
 
-Túnel para entrar desde tu Mac:
+Tunnel to reach it from your Mac:
 
 ```bash
 ssh -i ~/.ssh/oss-lab-vm.key -L 8080:localhost:8080 ubuntu@<ip>
 ```
 
-Con el túnel abierto: `http://localhost:8080` (usuario `Admin`, clave `zabbix` — **cámbiala al entrar**,
-ver más abajo cómo vía API si prefieres scriptearlo).
+With the tunnel open: `http://localhost:8080` (user `Admin`, password `zabbix` — **change it on
+first login**, see below how to do it via the API if you'd rather script it).
 
-## Agente en la VM OSS
+## Agent on the OSS VM
 
-La imagen de Zabbix instalada acá es **7.4** — el agente debe ser de la misma línea, no el que trae por
-defecto el repo de Ubuntu (suele ser más viejo). Agregar el repo oficial de Zabbix primero:
+The Zabbix image installed here is **7.4** — the agent must be from the same line, not the one
+Ubuntu's repo ships by default (usually older). Add the official Zabbix repo first:
 
 ```bash
 wget -q https://repo.zabbix.com/zabbix/7.4/release/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.4+ubuntu22.04_all.deb -O /tmp/zabbix-release.deb
@@ -50,9 +52,9 @@ sudo apt update
 sudo apt install -y zabbix-agent2
 ```
 
-Configurar **solo chequeos activos** (el agente empuja datos al server; evita que el server, corriendo
-dentro de un contenedor Docker, tenga que alcanzar el agente del host por la red — típicamente no puede
-llegar a `127.0.0.1` del host desde dentro del contenedor):
+Configure **active checks only** (the agent pushes data to the server; this avoids the server, which
+runs inside a Docker container, having to reach the host's agent over the network — it typically
+can't reach the host's `127.0.0.1` from inside the container):
 
 ```bash
 sudo sed -i \
@@ -63,61 +65,61 @@ sudo sed -i \
 sudo systemctl restart zabbix-agent2
 ```
 
-El puerto 10051 (trapper del server, para checks activos) ya queda publicado en `0.0.0.0` por el propio
-compose de Zabbix — no hace falta tocarlo, el agente le habla por `127.0.0.1:10051` desde el mismo host.
+Port 10051 (the server's trapper, for active checks) is already published on `0.0.0.0` by Zabbix's own
+compose — no need to touch it, the agent talks to it via `127.0.0.1:10051` from the same host.
 
-### UserParameter para `/health` del middleware
+### UserParameter for the middleware's `/health`
 
-Mismo motivo que arriba, al revés: si `middleware.health` fuera un **HTTP agent item**, lo ejecutaría el
-contenedor `zabbix-server`, que corre en la red Docker del propio Zabbix (no `network_mode: host`) y por
-lo tanto **tampoco** puede alcanzar `127.0.0.1:3000` de la VM — da falsos "Middleware no responde"
-intermitentes (confirmado: el check flapea resuelve/vuelve a abrirse solo, no es un problema real del
-middleware). La solución es la misma que para los demás items: que lo chequee el agente nativo del host,
-como un `UserParameter`:
+Same reason as above, in reverse: if `middleware.health` were an **HTTP agent item**, it would be run
+by the `zabbix-server` container, which runs on Zabbix's own Docker network (not
+`network_mode: host`) and therefore **also** can't reach the VM's `127.0.0.1:3000` — it causes
+intermittent false "Middleware not responding" alerts (confirmed: the check flaps and resolves on its
+own, it's not a real middleware issue). The fix is the same as for the other items: have the host's
+native agent check it, as a `UserParameter`:
 
 ```bash
 echo 'UserParameter=middleware.health,curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:3000/health' \
   | sudo tee /etc/zabbix/zabbix_agent2.d/middleware.conf
 sudo systemctl restart zabbix-agent2
-zabbix_agent2 -t middleware.health -c /etc/zabbix/zabbix_agent2.conf   # debe devolver "200"
+zabbix_agent2 -t middleware.health -c /etc/zabbix/zabbix_agent2.conf   # should return "200"
 ```
 
-Hacerlo **antes** de correr `seed.sh`, que ya crea el item como `type: 7` (Zabbix agent activo), no HTTP
-agent.
+Do this **before** running `seed.sh`, which already creates the item as `type: 7` (active Zabbix
+agent), not HTTP agent.
 
-## Host, items y triggers
+## Host, items and triggers
 
-[`seed.sh`](./seed.sh) crea el host `oss-lab-vm` con la plantilla **Linux by Zabbix agent active**
-(no la pasiva — con chequeos activos no hace falta registrar una interfaz de agente, y si se registra
-una apuntando a `127.0.0.1` el server dispara un falso "agent is not available" porque ese loopback no
-significa nada desde dentro del contenedor), más los items/triggers de este lab:
+[`seed.sh`](./seed.sh) creates the host `oss-lab-vm` with the **Linux by Zabbix agent active**
+template (not the passive one — with active checks there's no need to register an agent interface,
+and if one is registered pointing at `127.0.0.1` the server triggers a false "agent is not available"
+because that loopback means nothing from inside the container), plus this lab's items/triggers:
 
 ```bash
-ZABBIX_PASSWORD=<clave de Admin> bash seed.sh
+ZABBIX_PASSWORD=<Admin's password> bash seed.sh
 ```
 
-| Item key | Qué vigila | Trigger |
+| Item key | What it monitors | Trigger |
 | --- | --- | --- |
-| `proc.num[open5gs-amfd]` | Proceso AMF vivo | Alarma si `= 0` |
-| `proc.num[nr-gnb]` | gNB simulado vivo | Alarma si `= 0` |
-| `middleware.health` (UserParameter → `curl` local a `http://127.0.0.1:3000/health`) | Middleware de aprovisionamiento vivo | Alarma si no llegan datos en 2 min (`nodata()`) |
+| `proc.num[open5gs-amfd]` | AMF process alive | Alarm if `= 0` |
+| `proc.num[nr-gnb]` | Simulated gNB alive | Alarm if `= 0` |
+| `middleware.health` (UserParameter → local `curl` to `http://127.0.0.1:3000/health`) | Provisioning middleware alive | Alarm if no data arrives in 2 min (`nodata()`) |
 
-### La API cambió de versión (Zabbix 7.x)
+### The API changed version (Zabbix 7.x)
 
-Dos detalles que rompen scripts viejos:
+Two details that break old scripts:
 
-- El token de `user.login` ya **no** va en el parámetro `"auth"` de cada llamada — va en el header
-  `Authorization: Bearer <token>`.
-- `user.update` para cambiar tu propia clave ya no acepta `password`/`current_password`; los nombres de
-  campo son `passwd` y `current_passwd`:
+- The `user.login` token no longer goes in the `"auth"` parameter of each call — it goes in the
+  `Authorization: Bearer <token>` header.
+- `user.update` to change your own password no longer accepts `password`/`current_password`; the
+  field names are `passwd` and `current_passwd`:
   ```bash
   curl -s http://127.0.0.1:8080/api_jsonrpc.php -H "Content-Type: application/json-rpc" \
     -H "Authorization: Bearer $TOKEN" \
-    -d '{"jsonrpc":"2.0","method":"user.update","params":{"userid":"1","current_passwd":"zabbix","passwd":"<clave nueva>"},"id":1}'
+    -d '{"jsonrpc":"2.0","method":"user.update","params":{"userid":"1","current_passwd":"zabbix","passwd":"<new password>"},"id":1}'
   ```
 
-## Prueba
+## Test
 
-Detén el gNB (`sudo killall nr-gnb` en la VM) y confirma que aparece el Problem **"gNB simulado caido en
-oss-lab-vm"** (vía `problem.get` o en la UI, pestaña Problems). Vuelve a levantarlo
-([`../ueransim/README.md`](../ueransim/README.md)) y el Problem se cierra solo en el siguiente chequeo.
+Stop the gNB (`sudo killall nr-gnb` on the VM) and confirm the Problem **"Simulated gNB down on
+oss-lab-vm"** appears (via `problem.get` or in the UI, Problems tab). Bring it back up
+([`../ueransim/README.md`](../ueransim/README.md)) and the Problem closes on its own on the next check.

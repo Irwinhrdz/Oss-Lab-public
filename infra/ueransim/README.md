@@ -1,9 +1,10 @@
-# UERANSIM — gNB y UE simulados
+# UERANSIM — simulated gNB and UE
 
-Simula la radiobase (gNB) y el teléfono (UE). El éxito es ver la interfaz `uesimtun0` con IP y poder
-hacer ping por ella. Detalle completo: [`../../Lab OSS BSS de la venta a la red.md`](../../Lab%20OSS%20BSS%20de%20la%20venta%20a%20la%20red.md) · Paso 2.
+Simulates the radio base station (gNB) and the phone (UE). Success looks like seeing the
+`uesimtun0` interface come up with an IP and being able to ping through it. Full detail:
+[`../../Lab OSS BSS de la venta a la red.md`](../../Lab%20OSS%20BSS%20de%20la%20venta%20a%20la%20red.md) · Step 2.
 
-## Compilación
+## Build
 
 ```bash
 sudo apt install -y make gcc g++ libsctp-dev lksctp-tools iproute2
@@ -11,68 +12,64 @@ git clone https://github.com/aligungr/UERANSIM.git
 cd UERANSIM && make
 ```
 
-## Configuración
+## Configuration
 
-- `config/open5gs-gnb.yaml` — ver [`open5gs-gnb.example.yaml`](./open5gs-gnb.example.yaml): `linkIp`, `ngapIp`,
-  `gtpIp` y `amfConfigs` deben apuntar a la IP privada de la VM OSS.
-- `config/open5gs-ue.yaml` — ver [`open5gs-ue.example.yaml`](./open5gs-ue.example.yaml): `supi`, `key` y `op`
-  deben coincidir exactamente con el suscriptor creado en Open5GS (`opType: OPC`). Si el UE falla con error de
-  autenticación, casi siempre es K/OPc distinto entre MongoDB y el yaml.
+- `config/open5gs-gnb.yaml` — see [`open5gs-gnb.example.yaml`](./open5gs-gnb.example.yaml): `linkIp`,
+  `ngapIp`, `gtpIp` and `amfConfigs` must point to the OSS VM's private IP.
+- `config/open5gs-ue.yaml` — see [`open5gs-ue.example.yaml`](./open5gs-ue.example.yaml): `supi`, `key`
+  and `op` must match exactly the subscriber created in Open5GS (`opType: OPC`). If the UE fails with
+  an authentication error, it's almost always K/OPc mismatching between MongoDB and the yaml.
 
-## Salida a internet para los UE
+## Internet access for the UEs
 
-**Correr `net-fixup.sh` ANTES de levantar `nr-ue`** (y después de cada reinicio de la
-VM, porque son ajustes en caliente que no sobreviven un reboot):
+**Run `net-fixup.sh` BEFORE bringing up `nr-ue`** (and after every VM reboot, since these are live
+adjustments that don't survive a reboot):
 
 ```bash
 sudo bash net-fixup.sh
 ```
 
-El script hace más que `ip_forward` + `MASQUERADE` porque en este lab (todo-en-una-VM,
-UPF y UE compartiendo kernel) esa combinación simple **no alcanza**. Tres problemas
-reales que resuelve, de más a menos obvio:
+The script does more than `ip_forward` + `MASQUERADE` because in this lab (everything on one VM,
+UPF and UE sharing a kernel) that simple combination **isn't enough**. Three real problems it fixes,
+from most to least obvious:
 
-1. **Docker pone `FORWARD` en `DROP`** al instalarse — sin una excepción en
-   `DOCKER-USER` para la interfaz `ogstun`, ningún paquete del UPF se reenvía.
-2. **`MASQUERADE` no sirve aquí** — con la tabla de ruteo propia que crea `nr-ue`
-   para sí mismo, `MASQUERADE` no logra resolver la IP de la interfaz de salida y
-   termina sin traducir nada (se confirma con `conntrack -E`: la respuesta esperada
-   seguía apuntando a la IP del UE, nunca a la de la VM). Se usa `SNAT` explícito
-   en su lugar, y **solo** en la interfaz WAN real — si se aplica también en el
-   primer salto local (`uesimtun0`), corrompe el paquete antes de que llegue al UPF.
-3. **`conntrack` "congela" la decisión de NAT** la primera vez que ve el paquete
-   (cuando sale localmente por `uesimtun0`, donde ninguna regla de NAT aplica) y no
-   la reevalúa cuando el mismo paquete reaparece por `ogstun`/la interfaz WAN (donde
-   sí debería aplicar el SNAT). Se soluciona con `NOTRACK` en el primer salto, para
-   que conntrack recién empiece a trackear el paquete cuando llega por `ogstun`.
+1. **Docker sets `FORWARD` to `DROP`** on install — without an exception in `DOCKER-USER` for the
+   `ogstun` interface, no packet from the UPF gets forwarded.
+2. **`MASQUERADE` doesn't work here** — with the routing table `nr-ue` creates for itself, `MASQUERADE`
+   fails to resolve the outgoing interface's IP and ends up translating nothing (confirmed with
+   `conntrack -E`: the expected response still pointed at the UE's IP, never at the VM's). Explicit
+   `SNAT` is used instead, and **only** on the real WAN interface — applying it also on the first local
+   hop (`uesimtun0`) corrupts the packet before it reaches the UPF.
+3. **`conntrack` "freezes" the NAT decision** the first time it sees the packet (when it leaves
+   locally via `uesimtun0`, where no NAT rule applies) and doesn't re-evaluate it when the same packet
+   reappears via `ogstun`/the WAN interface (where the SNAT should apply). This is fixed with `NOTRACK`
+   on the first hop, so conntrack only starts tracking the packet once it arrives via `ogstun`.
 
-Además, la regla de ruteo por proceso que `nr-ue` crea para sí mismo (tabla
-`rt_uesimtun0`) usa una prioridad variable entre corridas (se ha visto 0, 99 y
-32765) y si "gana" esa carrera, el tráfico hace loop entre `ogstun` y `uesimtun0`
-(visible como `Time to live exceeded` en el ping). Por eso el script agrega su
-propia regla de prioridad 0 **antes** de levantar `nr-ue` — necesita ser el primero
-en esa prioridad, no solo tener un número bajo.
+In addition, the per-process routing rule `nr-ue` creates for itself (table `rt_uesimtun0`) uses a
+priority that varies between runs (0, 99, and 32765 have been observed), and if it "wins" that race,
+traffic loops between `ogstun` and `uesimtun0` (visible as `Time to live exceeded` on ping). That's why
+the script adds its own priority-0 rule **before** bringing up `nr-ue` — it needs to be first at that
+priority, not just have a low number.
 
-## Arranque y prueba
+## Startup and test
 
 ```bash
-sudo bash net-fixup.sh                          # una vez por reinicio de la VM
+sudo bash net-fixup.sh                          # once per VM reboot
 ./build/nr-gnb -c config/open5gs-gnb.yaml       # terminal 1
 sudo ./build/nr-ue -c config/open5gs-ue.yaml    # terminal 2
 ```
 
-**Para probar, usar la IP del UE, no el nombre de la interfaz:**
+**To test, use the UE's IP, not the interface name:**
 
 ```bash
-sudo ping -I 10.45.0.2 8.8.8.8      # SÍ: bind por dirección — funciona
-sudo ping -I uesimtun0 8.8.8.8      # NO: desde esta misma VM, nunca recibe respuesta
+sudo ping -I 10.45.0.2 8.8.8.8      # YES: bind by address — works
+sudo ping -I uesimtun0 8.8.8.8      # NO: from this same VM, never gets a response
 ```
 
-Motivo: la IP del UE (`10.45.0.x`) queda registrada en la tabla `local` del kernel
-porque la interfaz vive en este mismo host. Cuando la respuesta de Internet llega
-genuinamente (se puede confirmar con `tcpdump -i enp0s6 icmp`, se ve la respuesta
-entrando), el kernel la entrega "local" en vez de reenviarla por `ogstun`→`uesimtun0`,
-y el socket de `ping -I uesimtun0` (que usa `SO_BINDTODEVICE`) la descarta porque
-llegó por la interfaz física, no por `uesimtun0`. Haciendo *bind* por **dirección**
-en vez de por **interfaz**, `ping` no filtra por interfaz de llegada y sí la recibe.
-Un UE real (no en esta misma VM) no tiene este problema.
+Reason: the UE's IP (`10.45.0.x`) ends up registered in the kernel's `local` table because the
+interface lives on this same host. When the response from the Internet genuinely arrives (confirmable
+with `tcpdump -i enp0s6 icmp`, you can see the response coming in), the kernel delivers it "locally"
+instead of forwarding it via `ogstun`→`uesimtun0`, and the `ping -I uesimtun0` socket (which uses
+`SO_BINDTODEVICE`) discards it because it arrived via the physical interface, not via `uesimtun0`. By
+binding by **address** instead of by **interface**, `ping` doesn't filter by arrival interface and does
+receive it. A real UE (not on this same VM) doesn't have this problem.
