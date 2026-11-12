@@ -1,0 +1,20 @@
+# Fragmento de referencia de config/open5gs-ue.yaml
+# supi/key/op deben coincidir exactamente con el suscriptor creado en Open5GS.
+supi: 'imsi-999700000000001'
+mcc: '999'
+mnc: '70'
+
+key: '465B5CE8B199B49FAA5F0A2EE238A6BC'
+op: 'E8ED289DEBA952E4283B54E88E6183CA'
+opType: 'OPC'
+amf: '8000'
+imei: '356938035643803'
+
+gnbSearchList:
+  - 127.0.0.1 # <- IP privada de la VM OSS (misma de open5gs-gnb.yaml)
+
+sessions:
+  - apn: internet
+    type: IPv4
+    slice:
+      sst: 1

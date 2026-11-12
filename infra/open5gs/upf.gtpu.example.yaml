@@ -1,0 +1,9 @@
+# Fragmento de referencia de /etc/open5gs/upf.yaml
+# Reemplaza 127.0.0.x por la IP privada real de la VM OSS.
+upf:
+  gtpu:
+    server:
+      - address: 127.0.0.7 # <- IP privada de la VM OSS
+  session:
+    - subnet: 10.45.0.0/16
+      gateway: 10.45.0.1

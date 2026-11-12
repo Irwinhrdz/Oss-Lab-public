@@ -1,0 +1,12 @@
+services:
+  middleware:
+    build: .
+    image: oss-lab-middleware:latest
+    container_name: oss-lab-middleware
+    restart: unless-stopped
+    # network_mode: host porque Mongo (127.0.0.1:27017) y NetBox (127.0.0.1:8000) corren
+    # en esta misma VM y nunca se expusieron fuera de localhost. Con esto el contenedor
+    # comparte la red del host: no hace falta "ports" ni resolver la IP del host desde dentro.
+    network_mode: host
+    env_file:
+      - .env

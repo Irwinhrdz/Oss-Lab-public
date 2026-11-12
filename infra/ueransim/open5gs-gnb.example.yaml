@@ -1,0 +1,19 @@
+# Fragmento de referencia de config/open5gs-gnb.yaml
+# Reemplaza 127.0.0.x por la IP privada real de la VM OSS.
+mcc: '999'
+mnc: '70'
+
+nci: '0x000000010'
+idLength: 32
+tac: 1
+
+linkIp: 127.0.0.1 # <- IP privada de la VM OSS
+ngapIp: 127.0.0.1 # <- IP privada de la VM OSS
+gtpIp: 127.0.0.1 # <- IP privada de la VM OSS
+
+amfConfigs:
+  - address: 127.0.0.1 # <- IP privada de la VM OSS (misma del amf.yaml)
+    port: 38412
+
+slices:
+  - sst: 1
